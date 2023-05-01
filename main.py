@@ -189,10 +189,10 @@ def parse_creature_line(dt, line):
 
 
 def get_wild_creatures(bot, message, text):
-    log.warning(text)
+    log.debug(text)
     results = re.findall(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(.*?)(?=(?=\d{4}-\d{2}-\d{2})|(?=$))', text)
     for dt, line in results:
-        log.info(f'parsing {dt}=={line}')
+        log.debug(f'parsing {dt}=={line}')
         raw_dt = dt
         dt = datetime.fromisoformat(dt + '+00:00').timestamp()
         parsed = parse_creature_line(dt, line)

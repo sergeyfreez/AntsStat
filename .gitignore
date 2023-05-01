@@ -6,4 +6,5 @@ img/
 *.log
 .venv
 .env
+/.git
 /stats.txt
