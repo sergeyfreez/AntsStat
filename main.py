@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 import telebot
 from dotenv import load_dotenv
 from requests import post
-from db import Ants, Stats, WildCreature
+from db import Ants, Stats, WildCreature, RawTexts
+from spelling import spell_check
 
 cur_dir = os.path.dirname(os.path.realpath(__file__))
 log = logging.getLogger(__name__)
@@ -130,62 +131,83 @@ def get_orange_ants(bot, message, text):
             )
 
 
+def parse_creature_line(dt, line):
+    line = line.replace('-', ' ').lower().strip()
+
+    if line == '':
+        return -1
+    elif 'для прорыва' in line:
+        return -1
+    elif 'для быстрого повышения' in line:
+        return -1
+    elif 'получено' in line:
+        res = re.match(r'в результате (.+?) получено. (.+?) ?\(.*?(\d+).*', line)
+
+        if res and int(res.group(3)) < 10:
+            if WildCreature.get_or_none(dt=dt, type=res.group(1),
+                                        creature=spell_check(res.group(2)),
+                                        creature_level=res.group(3)):
+                return -1
+            WildCreature.update_creature(
+                dt=dt,
+                type=res.group(1),
+                creature=res.group(2),
+                creature_level=res.group(3)
+            )
+            return 1
+    elif 'неудачное повышение звезды' in line:
+        if WildCreature.get_or_none(type='неудачное повышение звезды', dt=dt):
+            return -1
+        res = re.match(
+            r'(неудачное повышение звезды) (.+?) \(.*?(\d+).*[,\.] (.+?) ?\(.*?(\d+).*деградировал',
+            line)
+        if res and int(res.group(3)) < 11:
+            WildCreature.update_creature(
+                dt=dt,
+                type=res.group(1),
+                creature=res.group(2),
+                creature_level=res.group(3),
+                donor_creature=res.group(4),
+                donor_creature_level=res.group(5),
+            )
+            return 1
+    elif 'успешное повышение звезды' in line:
+        if WildCreature.get_or_none(type='успешное повышение звезды', dt=dt):
+            return -1
+        res = re.match(r'(успешное повышение звезды) (.+?) ?\(.*?(\d+).*? потрачено. (.+?) ?\(.*?(\d+).*', line)
+        if res and int(res.group(3)) < 11 and int(res.group(5)) < 10:
+            WildCreature.update_creature(
+                dt=dt,
+                type=res.group(1),
+                creature=res.group(2),
+                creature_level=res.group(3),
+                donor_creature=res.group(4),
+                donor_creature_level=res.group(5),
+            )
+            return 1
+    return 0
+
+
 def get_wild_creatures(bot, message, text):
+    log.warning(text)
     results = re.findall(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(.*?)(?=(?=\d{4}-\d{2}-\d{2})|(?=$))', text)
     for dt, line in results:
-        line = line.strip().replace('-', ' ').lower()
+        log.info(f'parsing {dt}=={line}')
+        raw_dt = dt
         dt = datetime.fromisoformat(dt + '+00:00').timestamp()
-        if line == '':
-            pass
-        elif 'для прорыва' in line:
-            pass
-        elif 'для быстрого повышения' in line:
-            pass
-        elif 'получено' in line:
-            res = re.match(r'в результате (.+?) получено. (.+?) ?\(.*?(\d+).*', line)
-            if res and int(res.group(3)) < 10:
-                WildCreature.update_creature(
-                    dt=dt,
-                    type=res.group(1),
-                    creature=res.group(2),
-                    creature_level=res.group(3)
-                )
-            else:
-                bot.send_message(message.from_user.id, f'Can\'t parse: {line}')
-                log.warning(f"Can't parse {line}")
-        elif 'неудачное повышение звезды' in line:
-            res = re.match(
-                r'(неудачное повышение звезды) (.+?) \(.*?(\d+).*[,\.] (.+?) ?\(.*?(\d+).*деградировал',
-                line)
-            if res and int(res.group(3)) < 10:
-                WildCreature.update_creature(
-                    dt=dt,
-                    type=res.group(1),
-                    creature=res.group(2),
-                    creature_level=res.group(3),
-                    donor_creature=res.group(4),
-                    donor_creature_level=res.group(5),
-                )
-            else:
-                bot.send_message(message.from_user.id, f'Can\'t parse: {line}')
-                log.warning(f"Can't parse {line}")
-        elif 'успешное повышение звезды' in line:
-            res = re.match(r'(успешное повышение звезды) (.+?) ?\(.*?(\d+).*? потрачено. (.+?) ?\(.*?(\d+).*', line)
-            if res and int(res.group(3)) < 10 and int(res.group(5)) < 10:
-                WildCreature.update_creature(
-                    dt=dt,
-                    type=res.group(1),
-                    creature=res.group(2),
-                    creature_level=res.group(3),
-                    donor_creature=res.group(4),
-                    donor_creature_level=res.group(5),
-                )
-            else:
-                bot.send_message(message.from_user.id, f'Can\'t parse: {line}')
-                log.warning(f"Can't parse {line}")
-        else:
+        parsed = parse_creature_line(dt, line)
+
+        if parsed == 0:
             bot.send_message(message.from_user.id, f'Can\'t parse: {line}')
-            log.warning(f"Can't parse {line}")
+            log.warning(f"{message.date}_{message.from_user.id}.jpg Can't parse {raw_dt}  {line}")
+        if parsed > -1:
+            RawTexts.create(
+                dt=dt,
+                message=line,
+                type='creature',
+                file_path=f'{message.date}_{message.from_user.id}.jpg',
+                parsed=bool(parsed)
+            )
 
 
 def get_kill_stats(bot, message, text):
@@ -228,7 +250,7 @@ def main():
 
         downloaded_file = bot.download_file(file_info.file_path)
         image_data = base64.b64encode(downloaded_file).decode('utf-8')
-        with open(os.path.join(cur_dir, f'img/{message.date}_{message.from_user.id}.jpg'), 'wb') as new_file:
+        with open(os.path.join(cur_dir, 'img', f'{message.date}_{message.from_user.id}.jpg'), 'wb') as new_file:
             new_file.write(downloaded_file)
         text = image_base64_to_text(image_data)
 

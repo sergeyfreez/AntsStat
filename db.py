@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import datetime
 import logging
 import os
 
@@ -90,6 +90,31 @@ class Stats(BaseModel):
         primary_key = CompositeKey('dt', 'alliance')
 
 
+class ImprovementCost(BaseModel):
+    level_from = IntegerField()
+    level_to = IntegerField()
+    optimized_cost_success = IntegerField()
+    full_cost = IntegerField()
+    optimized_cost_fail = IntegerField()
+
+    optimized_egg_success = IntegerField()
+    optimized_egg_fail = IntegerField()
+    full_egg = IntegerField()
+
+    class Meta:
+        database = psql_db
+        primary_key = CompositeKey('level_from', 'level_to')
+
+
+class RawTexts(BaseModel):
+    dt = TimestampField()
+    message = TextField()
+    type = TextField()
+    file_path = TextField()
+    s3_id = TextField(null=True)
+    parsed = BooleanField(default=False)
+
+
 def init_db():
     psql_db.drop_tables([Stats])
     psql_db.create_tables([Stats])
@@ -109,18 +134,18 @@ def init_db():
             q.save(force_insert=True)
 
 
-if __name__ == '__main__':
-    # init_db()
-    pass
-    # all = Stats.select().where(Stats.user_id == 116371519).order_by(Stats.dt.desc())
-    # for s in all[:8*3]:
-    #     print(s)
-    # print(type(all))
+def init_dicts():
+    psql_db.drop_tables([ImprovementCost])
+    psql_db.create_tables([ImprovementCost])
+    with open('db_migrate/improvement_cost.csv', 'r') as f:
+        next(f)
+        psql_db.cursor().copy_from(f, 'improvementcost', sep=';')
+    psql_db.commit()
+
+
+def creature_example_check():
     import re
     from datetime import datetime
-
-    # psql_db.drop_tables([WildCreature])
-    # psql_db.create_tables([WildCreature])
     text = '''13:19 -1 Журнал Оранжевых Существ 2023-03-14 04:54:32 В результате события получено: Скорпион (3 2023-03-12 19:53:32 В результате вылупления получено: Паук-Скакун (1 *) 2023-03-12 05:15:24 В результате покупки набора получено: Жук Атлас (2%) 2023-03-12 05:15:24 В результате покупки набора получено: Жук Атлас (1 2023-03-12 05:15:05 В результате покупки набора получено: Жук Атлас (1 2023-03-12 05:10:26 Для быстрого повышения звезды потрачены следующие Дикие Существа 2023-03-11 05:37:22 В результате события получено: Гигантский Богомол (3 2023-03-09 06:31:22 В результате использования предмета получено: Рак-Отшельник (1 2023-03-07 15:20:01 В результате вылупления получено: Скорпион (1 2023-03-05 21:20:16 В результате вылупления получено: Рак-Отшельник (1 2023-03-05 21:06:48 Неудачное повышение звезды Гигантский Богомол (9*), Скоwрпион (8*) деградировал(а) в Скорпион (7*) 2023-03-05 19:20:44 Успешное повышение звезды Скорпион (7ж), потрачено: Гигантский Богомол (6%) 2023-03-05 15:06:36 Для прорыва уровня Дикого Существа (Гигантский Богомол (9%)) потрачены следующие Дикие Существа 2023-03-05 15:06:07 Для прорыва уровня Дикого Существа (Скорпион (7*)) потрачены следующие Дикие Существа 2023-03-05 15:05:53 Для быстрого повышения звезды потрачены следующие Дикие Существа 2023-03-05 13:30:33 Для прорыва уровня Дикого Существа (Жук Атлас (7*)) потрачены следующие Дикие Существа 2023-03-05 13:29:11'''
     results = re.findall(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(.*?)(?=(?=\d{4}-\d{2}-\d{2})|(?=$))', text)
     for dt, line in results:
@@ -177,3 +202,17 @@ if __name__ == '__main__':
         else:
             # bot.send_message(message.from_user.id, f'Can\'t parse: {line}')
             print("Can't parse ", line)
+
+
+if __name__ == '__main__':
+    # init_db()
+    pass
+    # all = Stats.select().where(Stats.user_id == 116371519).order_by(Stats.dt.desc())
+    # for s in all[:8*3]:
+    #     print(s)
+    # print(type(all))
+    # init_dicts()
+    datetime.datetime.now().isoformat()
+    # psql_db.drop_tables([RawTexts])
+    # psql_db.create_tables([RawTexts])
+    # creature_example_check()
