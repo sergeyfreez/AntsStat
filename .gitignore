@@ -1,0 +1,9 @@
+.Python
+.idea
+venv/
+img/
+**/logs
+*.log
+.venv
+.env
+/stats.txt
